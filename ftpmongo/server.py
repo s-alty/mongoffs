@@ -1,9 +1,9 @@
 import dataclasses
 import re
 import socket
-import threading
 
 from pymongo import MongoClient
+from pymongo.errors import OperationFailure
 
 from .mongo import (
     authenticate
@@ -46,22 +46,25 @@ def cmd_pass(session, password):
     try:
         session.mongo_client = authenticate(session.username, password)
         session.control.sendall(b'230 Authenticated as ' + session.username.encode('ascii') + b'\r\n')
-    except Exception:
+    except OperationFailure:
         session.control.sendall(b'530 Invalid username or password\r\n')
 
 
-def cmd_pwd(): pass
-def cmd_cwd(): pass
-def cmd_mkd(): pass
-def cmd_list(): pass
-def cmd_retr(): pass
-def cmd_stor(): pass
+def cmd_pwd(session):
+    pass
+
+
+def cmd_cwd(session): pass
+def cmd_mkd(session): pass
+def cmd_list(session): pass
+def cmd_retr(session): pass
+def cmd_stor(session): pass
 
 
 COMMANDS = [
     (re.compile(r'^NOOP\r\n'), cmd_noop),
     (re.compile(r'^USER (\w+)\r\n'), cmd_user),
-    (re.compile(r'^PASS (\w+)\r\n'), cmd_pass),
+    (re.compile(r'^PASS (.+)\r\n'), cmd_pass),
     (re.compile(r'^PWD\r\n'), cmd_pwd),
     (re.compile(r'^CWD ([\w/]+)\r\n'), cmd_cwd),
     (re.compile(r'^MKD ([\w/]+)\r\n'), cmd_mkd),
