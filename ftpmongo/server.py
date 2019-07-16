@@ -6,7 +6,8 @@ from pymongo import MongoClient
 from pymongo.errors import OperationFailure
 
 from .mongo import (
-    authenticate
+    authenticate,
+    list_databases
 )
 
 NETWORK_INTERFACE = '127.0.0.1'
@@ -22,11 +23,16 @@ class FTPSession:
     mongo_client: MongoClient = None
     current_db: str = None
     current_collection: str = None
+    data_addr: tuple = None
 
 
 def cmd_noop(session):
     session.control.sendall(b'200 Command okay\r\n')
 
+def cmd_type(session, type_):
+    # TODO: do we have to store this?
+    message = '200 switching transfer mode to {}\r\n'.format(type_)
+    session.control.sendall(message.encode('ascii'))
 
 def cmd_unknown(session):
     session.control.sendall(b'500 Not implemented\r\n')
@@ -48,7 +54,8 @@ def cmd_pass(session, password):
     try:
         session.mongo_client = authenticate(session.username, password)
         session.authenticated = True
-        session.control.sendall(b'230 Authenticated as ' + session.username.encode('ascii') + b'\r\n')
+        message = '230 Authenticated as {}\r\n'.format(session.username)
+        session.control.sendall(message.encode('ascii'))
     except OperationFailure:
         session.control.sendall(b'530 Invalid username or password\r\n')
 
@@ -68,16 +75,39 @@ def cmd_pwd(session):
     message = '257 "{}"\r\n'.format(_get_working_directory_path(session))
     session.control.sendall(message.encode('ascii'))
 
+def cmd_port(session, host_string, port_string):
+    data_host = '.'.join(host_string.split(','))
+    data_port = int.from_bytes([int(n) for n in port_string.split(',')], 'big')
+    session.data_addr = (data_host, data_port)
+    session.control.sendall(b'200 Duely noted\r\n')
 
-def cmd_cwd(session): pass
+def cmd_list(session, path):
+    # TODO: actually use path argument
+    session.control.sendall(b'150 Opening the data connection\r\n')
+
+    data_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
+    data_socket.connect(session.data_addr)
+
+    databases = list_databases(session.mongo_client)
+    message = '\r\n'.join(databases)
+    data_socket.sendall(message.encode('ascii'))
+
+    session.control.sendall(b'226 Closing data connection\r\n')
+    data_socket.close()
+
+
+def cmd_cwd(session, path):
+    pass
+
 def cmd_mkd(session): pass
-def cmd_list(session): pass
 def cmd_retr(session): pass
 def cmd_stor(session): pass
 
 
 COMMANDS = [
     (re.compile(r'^NOOP\r\n'), cmd_noop),
+    (re.compile(r'^TYPE ([IA])\r\n'), cmd_type),
+    (re.compile(r'^PORT (\d+,\d+,\d+,\d+),(\d+,\d+)\r\n'), cmd_port),
     (re.compile(r'^USER (\w+)\r\n'), cmd_user),
     (re.compile(r'^PASS (.+)\r\n'), cmd_pass),
     (re.compile(r'^PWD\r\n'), cmd_pwd),
@@ -91,6 +121,7 @@ COMMANDS = [
 
 
 def dispatch(session, text):
+    print(text)
     for pattern, func in COMMANDS:
         m = pattern.match(text)
         if m:

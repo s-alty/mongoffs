@@ -16,3 +16,7 @@ def authenticate(username, password):
     )
     client.test.command({'ping': 1})
     return client
+
+
+def list_databases(client):
+    return list(client.list_database_names())
