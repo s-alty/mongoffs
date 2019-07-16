@@ -16,10 +16,12 @@ CONTROL_PORT = 21
 @dataclasses.dataclass
 class FTPSession:
     control: socket.socket
-    mongo_client: MongoClient = None
     buf: bytes = b''
     authenticated: bool = False
     username: str = None
+    mongo_client: MongoClient = None
+    current_db: str = None
+    current_collection: str = None
 
 
 def cmd_noop(session):
@@ -45,13 +47,26 @@ def cmd_user(session, username):
 def cmd_pass(session, password):
     try:
         session.mongo_client = authenticate(session.username, password)
+        session.authenticated = True
         session.control.sendall(b'230 Authenticated as ' + session.username.encode('ascii') + b'\r\n')
     except OperationFailure:
         session.control.sendall(b'530 Invalid username or password\r\n')
 
 
+# TODO: Write an authentication required decorator
+
+
+def _get_working_directory_path(session):
+    if session.current_db is None:
+        return '/'
+    if session.current_collection is None:
+        return '/{}'.format(session.current_db)
+    return '/{}/{}'.format(session.current_db, session.current_collection)
+
+
 def cmd_pwd(session):
-    pass
+    message = '257 "{}"\r\n'.format(_get_working_directory_path(session))
+    session.control.sendall(message.encode('ascii'))
 
 
 def cmd_cwd(session): pass
