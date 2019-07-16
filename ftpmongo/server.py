@@ -3,6 +3,12 @@ import re
 import socket
 import threading
 
+from pymongo import MongoClient
+
+from .mongo import (
+    authenticate
+)
+
 NETWORK_INTERFACE = '127.0.0.1'
 CONTROL_PORT = 21
 
@@ -10,6 +16,7 @@ CONTROL_PORT = 21
 @dataclasses.dataclass
 class FTPSession:
     control: socket.socket
+    mongo_client: MongoClient = None
     buf: bytes = b''
     authenticated: bool = False
     username: str = None
@@ -30,9 +37,19 @@ def cmd_quit(session):
     session.control.sendall(b"221 y'all come back now, ya hear?\r\n")
     session.control.close()
 
+def cmd_user(session, username):
+    session.username = username
+    session.authenticated = False
+    session.control.sendall(b'331 Send the password\r\n')
 
-def cmd_user(): pass
-def cmd_pass(): pass
+def cmd_pass(session, password):
+    try:
+        session.mongo_client = authenticate(session.username, password)
+        session.control.sendall(b'230 Authenticated as ' + session.username.encode('ascii') + b'\r\n')
+    except Exception:
+        session.control.sendall(b'530 Invalid username or password\r\n')
+
+
 def cmd_pwd(): pass
 def cmd_cwd(): pass
 def cmd_mkd(): pass
@@ -51,7 +68,7 @@ COMMANDS = [
     (re.compile(r'^LIST ?([\w/]*)\r\n'), cmd_list),
     (re.compile(r'^RETR ([\w/]+)\r\n'), cmd_retr),
     (re.compile(r'^STOR ([\w/]+)\r\n'), cmd_stor),
-    (re.compile(r'QUIT\r\n'), cmd_quit)
+    (re.compile(r'^QUIT\r\n'), cmd_quit)
 ]
 
 
@@ -75,10 +92,9 @@ def listen_for_control_connections():
 def _recv_line(s):
     while b'\r\n' not in s.buf:
         s.buf += s.control.recv(1024)
-    index = s.buf.find(b'\r\n')
+    index = s.buf.find(b'\r\n') + 2
     line = s.buf[:index]
     s.buf = s.buf[index:]
-    breakpoint()
     return line
 
 def ftp_control_connection(control_socket, addr):
@@ -93,8 +109,3 @@ def ftp_control_connection(control_socket, addr):
     except OSError:
         # The connection was closed, we'll return so the thread can exit
         return
-
-
-if __name__ == '__main__':
-    for control_connection, addr in listen_for_control_connections():
-        threading.Thread(target=ftp_control_connection, args=(control_connection, addr)).start()
