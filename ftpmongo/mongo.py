@@ -19,4 +19,7 @@ def authenticate(username, password):
 
 
 def list_databases(client):
-    return list(client.list_database_names())
+    return client.list_database_names()
+
+def list_collections(client, db):
+    return getattr(client, db).list_collection_names()

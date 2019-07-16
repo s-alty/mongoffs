@@ -1,4 +1,5 @@
 import dataclasses
+import os
 import re
 import socket
 
@@ -7,6 +8,7 @@ from pymongo.errors import OperationFailure
 
 from .mongo import (
     authenticate,
+    list_collections,
     list_databases
 )
 
@@ -71,6 +73,15 @@ def _get_working_directory_path(session):
     return '/{}/{}'.format(session.current_db, session.current_collection)
 
 
+def _get_db_and_collection(path):
+    components = path.split('/')
+    current_db = components[1] or None
+    try:
+        current_collection = components[2]
+    except IndexError:
+        current_collection = None
+    return current_db, current_collection
+
 def cmd_pwd(session):
     message = '257 "{}"\r\n'.format(_get_working_directory_path(session))
     session.control.sendall(message.encode('ascii'))
@@ -81,15 +92,31 @@ def cmd_port(session, host_string, port_string):
     session.data_addr = (data_host, data_port)
     session.control.sendall(b'200 Duely noted\r\n')
 
+
+def _format_directories(dirs):
+    return '\r\n'.join('drwxrwxr-x 1 0 0 4960 {}'.format(d) for d in dirs)
+
 def cmd_list(session, path):
-    # TODO: actually use path argument
+    # default to working directory when no path is supplied
+    path = path or _get_working_directory_path(session)
+    db, collection = _get_db_and_collection(path)
+
+    # TODO: context manager for data connection managementn
     session.control.sendall(b'150 Opening the data connection\r\n')
 
     data_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
     data_socket.connect(session.data_addr)
 
-    databases = list_databases(session.mongo_client)
-    message = '\r\n'.join(databases)
+    if db is None:
+        databases = list_databases(session.mongo_client)
+        message = _format_directories(databases)
+    elif collection is None:
+        collections = list_collections(session.mongo_client, db)
+        message = _format_directories(collections)
+    else:
+        # TODO: list documents
+        pass
+
     data_socket.sendall(message.encode('ascii'))
 
     session.control.sendall(b'226 Closing data connection\r\n')
@@ -97,7 +124,16 @@ def cmd_list(session, path):
 
 
 def cmd_cwd(session, path):
-    pass
+    if os.path.isabs(path):
+        result_path = path
+    else:
+        working_directory = _get_working_directory_path(session)
+        result_path = os.path.normpath(os.path.join(working_directory, path))
+
+    db, collection = _get_db_and_collection(result_path)
+    session.current_db = db
+    session.current_collection = collection
+    session.control.sendall(b'250 Changing directory\r\n')
 
 def cmd_mkd(session): pass
 def cmd_retr(session): pass
@@ -111,7 +147,7 @@ COMMANDS = [
     (re.compile(r'^USER (\w+)\r\n'), cmd_user),
     (re.compile(r'^PASS (.+)\r\n'), cmd_pass),
     (re.compile(r'^PWD\r\n'), cmd_pwd),
-    (re.compile(r'^CWD ([\w/]+)\r\n'), cmd_cwd),
+    (re.compile(r'^CWD ([\w/\.]+)\r\n'), cmd_cwd),
     (re.compile(r'^MKD ([\w/]+)\r\n'), cmd_mkd),
     (re.compile(r'^LIST ?([\w/]*)\r\n'), cmd_list),
     (re.compile(r'^RETR ([\w/]+)\r\n'), cmd_retr),
