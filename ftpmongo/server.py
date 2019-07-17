@@ -31,6 +31,56 @@ class FTPSession:
     data_addr: tuple = None
 
 
+###########
+# HELPERS #
+###########
+def _get_working_directory_path(session):
+    if session.current_db is None:
+        return '/'
+    if session.current_collection is None:
+        return '/{}'.format(session.current_db)
+    return '/{}/{}'.format(session.current_db, session.current_collection)
+
+def _get_db_and_collection(path):
+    components = path.split('/')
+    current_db = components[1] or None
+    try:
+        current_collection = components[2]
+    except IndexError:
+        current_collection = None
+    return current_db, current_collection
+
+def _format_directories(dirs):
+    return '\r\n'.join('drwxrwxr-x 1 0 0 4960 {}'.format(d) for d in dirs)
+
+def _format_files(file_list):
+    return '\r\n'.join('-rw-rw-r-- 1 0 0 {} {}'.format(int(f['value']), f['_id']) for f in file_list)
+
+@contextlib.contextmanager
+def data_connection(data_addr, control_socket):
+    control_socket.sendall(b'150 Opening the data connection\r\n')
+
+    data_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
+    data_socket.connect(data_addr)
+    try:
+        yield data_socket
+    finally:
+        control_socket.sendall(b'226 Closing data connection\r\n')
+        data_socket.close()
+
+def auth_required(func):
+    def decorated(*args):
+        session = args[0]
+        if session.authenticated:
+            return func(*args)
+        else:
+            session.control.sendall(b'530 ya gotta log in first\r\n')
+    return decorated
+
+################
+# FTP COMMANDS #
+################
+
 def cmd_noop(session):
     session.control.sendall(b'200 Command okay\r\n')
 
@@ -41,7 +91,6 @@ def cmd_type(session, type_):
 
 def cmd_unknown(session):
     session.control.sendall(b'500 Not implemented\r\n')
-
 
 def cmd_quit(session):
     # TODO: we shouldn't close if a data transfer is in progress
@@ -64,41 +113,6 @@ def cmd_pass(session, password):
     except OperationFailure:
         session.control.sendall(b'530 Invalid username or password\r\n')
 
-
-# TODO: Write an authentication required decorator
-
-
-def _get_working_directory_path(session):
-    if session.current_db is None:
-        return '/'
-    if session.current_collection is None:
-        return '/{}'.format(session.current_db)
-    return '/{}/{}'.format(session.current_db, session.current_collection)
-
-
-def _get_db_and_collection(path):
-    components = path.split('/')
-    current_db = components[1] or None
-    try:
-        current_collection = components[2]
-    except IndexError:
-        current_collection = None
-    return current_db, current_collection
-
-
-@contextlib.contextmanager
-def data_connection(data_addr, control_socket):
-    control_socket.sendall(b'150 Opening the data connection\r\n')
-
-    data_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
-    data_socket.connect(data_addr)
-    try:
-        yield data_socket
-    finally:
-        control_socket.sendall(b'226 Closing data connection\r\n')
-        data_socket.close()
-
-
 def cmd_pwd(session):
     message = '257 "{}"\r\n'.format(_get_working_directory_path(session))
     session.control.sendall(message.encode('ascii'))
@@ -109,13 +123,7 @@ def cmd_port(session, host_string, port_string):
     session.data_addr = (data_host, data_port)
     session.control.sendall(b'200 Duely noted\r\n')
 
-
-def _format_directories(dirs):
-    return '\r\n'.join('drwxrwxr-x 1 0 0 4960 {}'.format(d) for d in dirs)
-
-def _format_files(file_list):
-    return '\r\n'.join('-rw-rw-r-- 1 0 0 {} {}'.format(int(f['value']), f['_id']) for f in file_list)
-
+@auth_required
 def cmd_list(session, path):
     # default to working directory when no path is supplied
     path = path or _get_working_directory_path(session)
@@ -134,7 +142,7 @@ def cmd_list(session, path):
     with data_connection(session.data_addr, session.control) as ds:
         ds.sendall(message.encode('ascii'))
 
-
+@auth_required
 def cmd_cwd(session, path):
     if os.path.isabs(path):
         result_path = path
@@ -147,21 +155,25 @@ def cmd_cwd(session, path):
     session.current_collection = collection
     session.control.sendall(b'250 Changing directory\r\n')
 
-
+@auth_required
 def cmd_retr(session, file_name):
     document = get_document(session.mongo_client, session.current_db, session.current_collection, file_name)
     with data_connection(session.data_addr, session.control) as ds:
         ds.sendall(document)
 
-
+@auth_required
 def cmd_mkd(session):
     pass
 
-
+@auth_required
 def cmd_stor(session, file_name):
     pass
     # upsert_document(session.mongo_client, session.current_db, session.current_collection, file_name, contents)
 
+
+###############
+# DISPATCHING #
+###############
 
 COMMANDS = [
     (re.compile(r'^NOOP\r\n'), cmd_noop),
@@ -189,13 +201,16 @@ def dispatch(session, text):
     return cmd_unknown(session)
 
 
+##########
+# SERVER #
+##########
+
 def listen_for_control_connections():
     with socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM) as server_socket:
         server_socket.bind((NETWORK_INTERFACE, CONTROL_PORT))
         server_socket.listen()
         while True:
             yield server_socket.accept()
-
 
 def _recv_line(s):
     while b'\r\n' not in s.buf:
