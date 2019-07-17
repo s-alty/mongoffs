@@ -23,3 +23,18 @@ def list_databases(client):
 
 def list_collections(client, db):
     return getattr(client, db).list_collection_names()
+
+def list_documents(client, db, collection):
+    db = getattr(client, db)
+    coll = getattr(db, collection)
+    map_function = """
+    function(){
+       emit(this._id, Object.bsonsize(this));
+    }
+    """
+    reduce_function = """
+    function(key, values){
+      return values[0];
+    }
+    """
+    return coll.map_reduce(map_function, reduce_function, {'inline': 1})['results']

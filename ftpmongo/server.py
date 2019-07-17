@@ -9,7 +9,8 @@ from pymongo.errors import OperationFailure
 from .mongo import (
     authenticate,
     list_collections,
-    list_databases
+    list_databases,
+    list_documents
 )
 
 NETWORK_INTERFACE = '127.0.0.1'
@@ -96,6 +97,9 @@ def cmd_port(session, host_string, port_string):
 def _format_directories(dirs):
     return '\r\n'.join('drwxrwxr-x 1 0 0 4960 {}'.format(d) for d in dirs)
 
+def _format_files(file_list):
+    return '\r\n'.join('-rw-rw-r-- 1 0 0 {} {}'.format(int(f['value']), f['_id']) for f in file_list)
+
 def cmd_list(session, path):
     # default to working directory when no path is supplied
     path = path or _get_working_directory_path(session)
@@ -114,8 +118,8 @@ def cmd_list(session, path):
         collections = list_collections(session.mongo_client, db)
         message = _format_directories(collections)
     else:
-        # TODO: list documents
-        pass
+        documents = list_documents(session.mongo_client, db, collection)
+        message = _format_files(documents)
 
     data_socket.sendall(message.encode('ascii'))
 
