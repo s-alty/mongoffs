@@ -1,5 +1,5 @@
+import contextlib
 import dataclasses
-import json
 import os
 import re
 import socket
@@ -85,6 +85,20 @@ def _get_db_and_collection(path):
         current_collection = None
     return current_db, current_collection
 
+
+@contextlib.contextmanager
+def data_connection(data_addr, control_socket):
+    control_socket.sendall(b'150 Opening the data connection\r\n')
+
+    data_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
+    data_socket.connect(data_addr)
+    try:
+        yield data_socket
+    finally:
+        control_socket.sendall(b'226 Closing data connection\r\n')
+        data_socket.close()
+
+
 def cmd_pwd(session):
     message = '257 "{}"\r\n'.format(_get_working_directory_path(session))
     session.control.sendall(message.encode('ascii'))
@@ -107,12 +121,6 @@ def cmd_list(session, path):
     path = path or _get_working_directory_path(session)
     db, collection = _get_db_and_collection(path)
 
-    # TODO: context manager for data connection managementn
-    session.control.sendall(b'150 Opening the data connection\r\n')
-
-    data_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
-    data_socket.connect(session.data_addr)
-
     if db is None:
         databases = list_databases(session.mongo_client)
         message = _format_directories(databases)
@@ -123,10 +131,8 @@ def cmd_list(session, path):
         documents = list_documents(session.mongo_client, db, collection)
         message = _format_files(documents)
 
-    data_socket.sendall(message.encode('ascii'))
-
-    session.control.sendall(b'226 Closing data connection\r\n')
-    data_socket.close()
+    with data_connection(session.data_addr, session.control) as ds:
+        ds.sendall(message.encode('ascii'))
 
 
 def cmd_cwd(session, path):
@@ -143,24 +149,18 @@ def cmd_cwd(session, path):
 
 
 def cmd_retr(session, file_name):
-    session.control.sendall(b'150 Opening the data connection\r\n')
-
-    data_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
-    data_socket.connect(session.data_addr)
-
     document = get_document(session.mongo_client, session.current_db, session.current_collection, file_name)
-    data_socket.sendall(document)
-
-    session.control.sendall(b'226 Closing data connection\r\n')
-    data_socket.close()
+    with data_connection(session.data_addr, session.control) as ds:
+        ds.sendall(document)
 
 
 def cmd_mkd(session):
     pass
 
 
-def cmd_stor(session):
+def cmd_stor(session, file_name):
     pass
+    # upsert_document(session.mongo_client, session.current_db, session.current_collection, file_name, contents)
 
 
 COMMANDS = [
