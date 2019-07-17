@@ -1,4 +1,5 @@
 import dataclasses
+import json
 import os
 import re
 import socket
@@ -8,6 +9,7 @@ from pymongo.errors import OperationFailure
 
 from .mongo import (
     authenticate,
+    get_document,
     list_collections,
     list_databases,
     list_documents
@@ -139,9 +141,26 @@ def cmd_cwd(session, path):
     session.current_collection = collection
     session.control.sendall(b'250 Changing directory\r\n')
 
-def cmd_mkd(session): pass
-def cmd_retr(session): pass
-def cmd_stor(session): pass
+
+def cmd_retr(session, file_name):
+    session.control.sendall(b'150 Opening the data connection\r\n')
+
+    data_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)
+    data_socket.connect(session.data_addr)
+
+    document = get_document(session.mongo_client, session.current_db, session.current_collection, file_name)
+    data_socket.sendall(document)
+
+    session.control.sendall(b'226 Closing data connection\r\n')
+    data_socket.close()
+
+
+def cmd_mkd(session):
+    pass
+
+
+def cmd_stor(session):
+    pass
 
 
 COMMANDS = [

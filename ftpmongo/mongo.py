@@ -1,3 +1,4 @@
+import bson
 import pymongo
 
 DB_HOST = '127.0.0.1'
@@ -38,3 +39,9 @@ def list_documents(client, db, collection):
     }
     """
     return coll.map_reduce(map_function, reduce_function, {'inline': 1})['results']
+
+def get_document(client, db, collection, _id):
+    db = getattr(client, db)
+    coll = getattr(db, collection)
+    doc = coll.find_one({'_id': _id})
+    return bson.BSON.encode(doc)
