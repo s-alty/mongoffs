@@ -1,4 +1,6 @@
-import bson
+import json
+
+import bson.json_util
 import pymongo
 
 DB_HOST = '127.0.0.1'
@@ -40,8 +42,28 @@ def list_documents(client, db, collection):
     """
     return coll.map_reduce(map_function, reduce_function, {'inline': 1})['results']
 
-def get_document(client, db, collection, _id):
+def get_file_or_document(client, db, collection, _id):
     db = getattr(client, db)
     coll = getattr(db, collection)
     doc = coll.find_one({'_id': _id})
-    return bson.BSON.encode(doc)
+
+    # returns bytes
+    if '_bindata' in doc:
+        return doc['_bindata']
+    return json.dumps(doc, default=bson.json_util.default).encode('ascii')
+
+
+def store_file_or_document(client, db, collection, _id, contents):
+    # contents is either json or raw binary data
+    # if it's bson just insert that directly
+    # if its generic binary_data then wrap it in a document
+    try:
+        document = json.loads(contents, object_hook=bson.json_util.object_hook)
+    except json.JSONDecodeError:
+        document = {'_bindata': contents}
+
+    document['_id'] = _id
+
+    db = getattr(client, db)
+    coll = getattr(db, collection)
+    coll.replace_one({'_id': _id}, document, upsert=True)

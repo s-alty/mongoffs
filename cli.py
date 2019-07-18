@@ -6,5 +6,6 @@ from ftpmongo.server import (
 )
 
 if __name__ == '__main__':
+    print('Listening for connections')
     for control_connection, addr in listen_for_control_connections():
         threading.Thread(target=ftp_control_connection, args=(control_connection, addr)).start()

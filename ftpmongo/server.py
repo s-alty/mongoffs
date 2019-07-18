@@ -9,13 +9,14 @@ from pymongo.errors import OperationFailure
 
 from .mongo import (
     authenticate,
-    get_document,
+    get_file_or_document,
     list_collections,
     list_databases,
-    list_documents
+    list_documents,
+    store_file_or_document
 )
 
-NETWORK_INTERFACE = '127.0.0.1'
+NETWORK_INTERFACE = '0.0.0.0'
 CONTROL_PORT = 21
 
 
@@ -89,6 +90,9 @@ def cmd_type(session, type_):
     message = '200 switching transfer mode to {}\r\n'.format(type_)
     session.control.sendall(message.encode('ascii'))
 
+def cmd_syst(session):
+    session.control.sendall(b'215 UNIX\r\n')
+
 def cmd_unknown(session):
     session.control.sendall(b'502 Not implemented\r\n')
 
@@ -157,7 +161,7 @@ def cmd_cwd(session, path):
 
 @auth_required
 def cmd_retr(session, file_name):
-    document = get_document(session.mongo_client, session.current_db, session.current_collection, file_name)
+    document = get_file_or_document(session.mongo_client, session.current_db, session.current_collection, file_name)
     with data_connection(session.data_addr, session.control) as ds:
         ds.sendall(document)
 
@@ -167,8 +171,10 @@ def cmd_mkd(session):
 
 @auth_required
 def cmd_stor(session, file_name):
-    pass
-    # upsert_document(session.mongo_client, session.current_db, session.current_collection, file_name, contents)
+    with data_connection(session.data_addr, session.control) as ds:
+        # read all the data that the client sends
+        contents = ds.makefile().read()
+        store_file_or_document(session.mongo_client, session.current_db, session.current_collection, file_name, contents)
 
 
 ###############
@@ -186,7 +192,8 @@ COMMANDS = [
     (re.compile(r'^MKD ([\w/]+)\r\n'), cmd_mkd),
     (re.compile(r'^LIST ?([\w/]*)\r\n'), cmd_list),
     (re.compile(r'^RETR ([\w/]+)\r\n'), cmd_retr),
-    (re.compile(r'^STOR ([\w/]+)\r\n'), cmd_stor),
+    (re.compile(r'^STOR ([\w/\.]+)\r\n'), cmd_stor),
+    (re.compile(r'^SYST\r\n'), cmd_syst),
     (re.compile(r'^QUIT\r\n'), cmd_quit)
 ]
 
