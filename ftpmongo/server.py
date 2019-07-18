@@ -90,7 +90,7 @@ def cmd_type(session, type_):
     session.control.sendall(message.encode('ascii'))
 
 def cmd_unknown(session):
-    session.control.sendall(b'500 Not implemented\r\n')
+    session.control.sendall(b'502 Not implemented\r\n')
 
 def cmd_quit(session):
     # TODO: we shouldn't close if a data transfer is in progress
