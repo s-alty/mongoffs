@@ -9,6 +9,7 @@ from pymongo.errors import OperationFailure
 
 from .mongo import (
     authenticate,
+    create_collection,
     get_file_or_document,
     list_collections,
     list_databases,
@@ -166,8 +167,20 @@ def cmd_retr(session, file_name):
         ds.sendall(document)
 
 @auth_required
-def cmd_mkd(session):
-    pass
+def cmd_mkd(session, path):
+    if os.path.isabs(path):
+        result_path = path
+    else:
+        working_directory = _get_working_directory_path(session)
+        result_path = os.path.normpath(os.path.join(working_directory, path))
+
+    db, collection = _get_db_and_collection(result_path)
+    if collection is not None:
+        create_collection(session.mongo_client, db, collection)
+        message = '257 {} directory created\r\n'.format(result_path)
+        session.control.sendall(message.encode('ascii'))
+    else:
+        session.control.sendall(b"550 Can't create top level directories create a nested directory\r\n")
 
 @auth_required
 def cmd_stor(session, file_name):

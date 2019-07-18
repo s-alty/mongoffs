@@ -67,3 +67,11 @@ def store_file_or_document(client, db, collection, _id, contents):
     db = getattr(client, db)
     coll = getattr(db, collection)
     coll.replace_one({'_id': _id}, document, upsert=True)
+
+def create_collection(client, db, collection):
+    db = getattr(client, db)
+    try:
+        db.create_collection(collection)
+    except pymongo.errors.CollectionInvalid:
+        # collection already existed
+        pass
