@@ -1,0 +1,42 @@
+* Mongo FFS
+** What is it?
+
+       Mongo
+ᵢₙ ₜₕₑ Filesystem
+   ᵥᵢₐ FTP
+       SERVER
+
+Mongo FFS exposes a filesystem like interface for MongoDB. Databases and collections appear as directories
+and documents appear as files. The operator can insert and retrieve documents by clicking and dragging files
+in an ftp client's interface.
+
+** How does it work?
+The credentials for a mongodb user are used to authenticate against the ftp server process.
+
+FTP commands like LIST, RETR, and STOR are translated into mongodb driver function calls.
+
+Uploaded files are stored as mongodb documents
+
+** What can I use it for?
+ - Providing an interface for non-technical users to interact with mongodb
+ - Redundant file backups via a mongo replica set
+
+** Configuration
+
+*** FTP Options
+The network interface and port to listen for ftp client connections
+ - server.NETWORK_INTERFACE
+ - server.CONTROL_PORT
+
+*** MongoDB Options
+ - mongo.DB_HOST
+ - mongo.DB_PORT
+ - mongo.AUTHENTICATION_TYPE (https://api.mongodb.com/python/current/api/pymongo/database.html#pymongo.auth.MECHANISMS)
+
+** TODOs
+
+*** Support for PASV clients
+
+*** BLOCK MODE
+
+*** Handle reads and writes to the control socket and data socket simultaneously

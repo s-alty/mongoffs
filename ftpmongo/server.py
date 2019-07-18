@@ -195,18 +195,18 @@ def cmd_stor(session, file_name):
 ###############
 
 COMMANDS = [
-    (re.compile(r'^NOOP\r\n'), cmd_noop),
-    (re.compile(r'^TYPE ([IA])\r\n'), cmd_type),
-    (re.compile(r'^PORT (\d+,\d+,\d+,\d+),(\d+,\d+)\r\n'), cmd_port),
     (re.compile(r'^USER (\w+)\r\n'), cmd_user),
     (re.compile(r'^PASS (.+)\r\n'), cmd_pass),
+    (re.compile(r'^TYPE ([IA])\r\n'), cmd_type),
+    (re.compile(r'^PORT (\d+,\d+,\d+,\d+),(\d+,\d+)\r\n'), cmd_port),
     (re.compile(r'^PWD\r\n'), cmd_pwd),
+    (re.compile(r'^LIST ?([\w/]*)\r\n'), cmd_list),
     (re.compile(r'^CWD ([\w/\.]+)\r\n'), cmd_cwd),
     (re.compile(r'^MKD ([\w/]+)\r\n'), cmd_mkd),
-    (re.compile(r'^LIST ?([\w/]*)\r\n'), cmd_list),
     (re.compile(r'^RETR ([\w/]+)\r\n'), cmd_retr),
     (re.compile(r'^STOR ([\w/\.]+)\r\n'), cmd_stor),
     (re.compile(r'^SYST\r\n'), cmd_syst),
+    (re.compile(r'^NOOP\r\n'), cmd_noop),
     (re.compile(r'^QUIT\r\n'), cmd_quit)
 ]
 

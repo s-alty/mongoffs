@@ -43,6 +43,7 @@ def list_documents(client, db, collection):
     return coll.map_reduce(map_function, reduce_function, {'inline': 1})['results']
 
 def get_file_or_document(client, db, collection, _id):
+    # TODO: could document be None?
     db = getattr(client, db)
     coll = getattr(db, collection)
     doc = coll.find_one({'_id': _id})
@@ -55,8 +56,8 @@ def get_file_or_document(client, db, collection, _id):
 
 def store_file_or_document(client, db, collection, _id, contents):
     # contents is either json or raw binary data
-    # if it's bson just insert that directly
-    # if its generic binary_data then wrap it in a document
+    # if it's json just insert that directly
+    # if its generic binary data then wrap it in a document
     try:
         document = json.loads(contents, object_hook=bson.json_util.object_hook)
     except json.JSONDecodeError:
